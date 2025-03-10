@@ -13,6 +13,8 @@ import org.springframework.stereotype.Service;
 
 import javax.servlet.http.HttpSession;
 
+import static com.hmdp.utils.SystemConstants.USER_NICK_NAME_PREFIX;
+
 /**
  * <p>
  * 服务实现类
@@ -77,12 +79,30 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 
 
         // 4. 一致，根据手机号查询用户
+        User user = query().eq("phone", phone).one();
 
         // 5. 判断用户是否存在
+        if(user == null){
+            // 6. 不存在，创建新用户并保存
+            user =  createUserWithPhone(phone);
+        }
 
-        // 6. 不存在，创建新用户并保存
 
         // 7. 保存用户信息到session
-        return null;
+        session.setAttribute("user",user);
+        return Result.ok();
+    }
+
+    /**
+     * 根据手机号生成用户
+     * @param phone
+     * @return
+     */
+    private User createUserWithPhone(String phone) {
+        User user = new User();
+        user.setPhone(phone);
+        user.setNickName(USER_NICK_NAME_PREFIX + RandomUtil.randomString(10));
+        save(user);
+        return user;
     }
 }
