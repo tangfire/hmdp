@@ -1722,4 +1722,137 @@ Redis 的 Lua 脚本通过原子性、灵活性和高效性，成为实现复杂
 ---
 
 
+以下是基于 RedisTemplate 调用 Lua 脚本的核心 API 及实现步骤，结合 Spring Boot 的典型实践：
+
+---
+
+### **一、核心 API 及使用流程**
+#### **1. **`DefaultRedisScript` 脚本对象**
+用于封装 Lua 脚本的元数据，包括脚本内容和返回类型。  
+**关键方法**：
+- **`setScriptSource()`**：指定脚本资源路径（如 `ClassPathResource` 或 `ResourceScriptSource`）。
+- **`setResultType()`**：设置脚本返回值的 Java 类型（支持 `Long`, `List`, `Boolean` 等）。  
+  **示例**：
+```java
+DefaultRedisScript<Long> script = new DefaultRedisScript<>();
+script.setLocation(new ClassPathResource("unlock.lua")); // 从 classpath 加载脚本文件
+script.setResultType(Long.class); // 明确返回类型
+```
+
+#### **2. **`RedisTemplate.execute()` 方法**
+执行 Lua 脚本的核心方法，支持参数传递和原子性操作。  
+**参数说明**：
+- **`RedisScript<T>`**：封装好的脚本对象（如 `DefaultRedisScript`）。
+- **`keys`**：传递给 Lua 脚本的键集合（对应 `KEYS` 数组）。
+- **`args`**：传递给 Lua 脚本的参数（对应 `ARGV` 数组）。  
+  **示例**：
+```java
+List<String> keys = Collections.singletonList("lock:order_123");
+String uuid = "client-abc-123";
+Long result = redisTemplate.execute(script, keys, uuid); // 返回 Lua 脚本的执行结果
+```
+
+---
+
+### **二、完整调用示例**
+#### **步骤 1：编写 Lua 脚本**
+例如 `unlock.lua`（释放分布式锁）：
+```lua
+if redis.call('get', KEYS[1]) == ARGV[1] then
+    return redis.call('del', KEYS[1])
+else
+    return 0
+end
+```
+
+#### **步骤 2：配置 RedisTemplate**
+需指定序列化方式，避免参数传递时出现乱码：
+```java
+@Bean
+public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory factory) {
+    RedisTemplate<String, Object> template = new RedisTemplate<>();
+    template.setConnectionFactory(factory);
+    template.setKeySerializer(new StringRedisSerializer());
+    template.setValueSerializer(new GenericJackson2JsonRedisSerializer());
+    return template;
+}
+```
+
+#### **步骤 3：加载脚本并执行**
+在业务代码中调用：
+```java
+@Autowired
+private RedisTemplate<String, Object> redisTemplate;
+
+public void unlock(String lockKey, String clientId) {
+    DefaultRedisScript<Long> script = new DefaultRedisScript<>();
+    script.setLocation(new ClassPathResource("unlock.lua"));
+    script.setResultType(Long.class);
+    
+    List<String> keys = Collections.singletonList(lockKey);
+    Long result = redisTemplate.execute(script, keys, clientId);
+    
+    if (result == 1) {
+        System.out.println("锁释放成功");
+    }
+}
+```
+
+---
+
+### **三、关键注意事项**
+1. **序列化一致性**  
+   确保 `RedisTemplate` 的序列化方式与 Lua 脚本中参数解析方式一致。例如，若使用 JSON 序列化，Lua 脚本需通过 `cjson` 库解析复杂对象。
+
+2. **参数传递规则**
+    - **键（KEYS）**：必须通过 `List` 传递，数量需与脚本中声明的 `KEYS` 数量一致。
+    - **参数（ARGV）**：支持任意类型（字符串、数字、JSON 对象），需在脚本中按索引解析。
+
+3. **性能优化**
+    - **预加载脚本**：通过 `SCRIPT LOAD` 命令预加载脚本，使用 `EVALSHA` 替代 `EVAL` 减少网络开销。
+    - **复用 `DefaultRedisScript` 对象**：避免重复解析脚本内容。
+
+4. **错误处理**
+    - 使用 `try-catch` 捕获 `RedisScriptExecutionException`，处理脚本语法错误或运行时异常。
+    - 通过 `redis.pcall()` 在 Lua 脚本中捕获 Redis 命令错误。
+
+---
+
+### **四、高级用法**
+#### **1. 动态脚本生成**
+若需动态拼接脚本内容，可直接传递脚本字符串：
+```java
+String scriptText = "return redis.call('get', KEYS[1])";
+RedisScript<String> script = RedisScript.of(scriptText);
+String value = redisTemplate.execute(script, Collections.singletonList("myKey"));
+```
+
+#### **2. 复杂返回值处理**
+支持返回集合类型（如 `List` 或 `Map`），需在脚本中构造 Lua 表：
+```lua
+local data = {name="Alice", age=30}
+return cjson.encode(data) -- 返回 JSON 字符串
+```
+Java 端接收后反序列化为对象：
+```java
+DefaultRedisScript<Map> script = new DefaultRedisScript<>();
+script.setResultType(Map.class);
+Map<String, Object> result = redisTemplate.execute(script, keys, args);
+```
+
+---
+
+### **五、适用场景**
+- **分布式锁**：原子性释放锁（如黑马点评项目示例）。
+- **限流**：令牌桶算法实现接口限流。
+- **批量操作**：减少网络往返次数（如批量更新库存）。
+
+---
+
+通过上述 API 和最佳实践，可高效利用 RedisTemplate 实现 Lua 脚本的原子性操作，提升系统性能和一致性。
+
+---
+
+
+
 
