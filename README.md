@@ -1361,6 +1361,9 @@ try {
 
 # 基于Redis的分布式锁
 
+![img_9](/src/assets/img_9.png)
+
+
 以下是基于 Redis 的分布式锁实现原理及关键细节的完整解析：
 
 ---
