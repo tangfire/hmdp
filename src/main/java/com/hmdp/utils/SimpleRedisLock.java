@@ -1,6 +1,7 @@
 package com.hmdp.utils;
 
-import cn.hutool.core.io.resource.ClassPathResource;
+// 修改导入的包路径
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -19,7 +20,7 @@ public class SimpleRedisLock implements ILock {
     private static final DefaultRedisScript<Long> UNLOCK_SCRIPT;
     static{
         UNLOCK_SCRIPT = new DefaultRedisScript<>();
-        UNLOCK_SCRIPT.setLocation((Resource) new ClassPathResource("unlock.lua"));
+        UNLOCK_SCRIPT.setLocation(new ClassPathResource("unlock.lua"));
         UNLOCK_SCRIPT.setResultType(Long.class);
     }
 
